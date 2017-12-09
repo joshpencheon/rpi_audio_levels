@@ -4,6 +4,7 @@ import math
 import numpy as np
 import pyaudio
 import struct
+from threading import Thread
 import time
 import unicornhathd
 
@@ -13,6 +14,7 @@ nFFT         = 2**8
 nFRAMES      = 5
 nTRACES      = 16
 TRACE_HEIGHT = 16
+RENDER_FPS   = 60
 
 # Debugging: get some not-too-pretty output:
 np.set_printoptions(precision=0, suppress=True, linewidth=2000)
@@ -56,6 +58,9 @@ def traces(bark_levels):
 
 # Scale the bar within the bounds of x:
 def to_level(bar, x_min, x_max):
+    # There is no extent defined; return zeros:
+    if x_min == x_max: return np.zeros_like(bar)
+
     grad = TRACE_HEIGHT / (x_max - x_min)
     return np.clip(grad * (bar - x_min), 0, TRACE_HEIGHT) - 1
 
@@ -81,9 +86,17 @@ def callback(data, frame_count, time_info, flag):
     i = (i + 1) % nFRAMES
     frames[i] = frame
 
-    render()
-
     return (data, pyaudio.paContinue)
+
+def render_loop():
+    target = 1.0 / RENDER_FPS
+
+    while True:
+        started = time.time()
+        render()
+        elapsed   = time.time() - started
+        remaining = max(0, target - elapsed)
+        time.sleep(remaining)
 
 def render():
     # Get a set of bars which represents the greatest across
@@ -129,6 +142,11 @@ def main():
 
     while stream.is_active():
         print "Press <ctrl-c> to stop..."
+
+        renderer = Thread(target=render_loop)
+        renderer.daemon = True
+        renderer.start()
+
         while True:
             try:
                 time.sleep(.5)
