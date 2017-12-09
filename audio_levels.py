@@ -57,7 +57,7 @@ def traces(bark_levels):
 # Scale the bar within the bounds of x:
 def to_level(bar, x_min, x_max):
     grad = TRACE_HEIGHT / (x_max - x_min)
-    return np.clip(grad * (bar - x_min), 0, TRACE_HEIGHT - 1)
+    return np.clip(grad * (bar - x_min), 0, TRACE_HEIGHT) - 1
 
 # Globals used to track the state of the buffered audio:
 i      = -1
@@ -98,12 +98,14 @@ def render():
     unicornhathd.clear()
 
     for x, level in enumerate(levels):
-        for y in range(0, int(level)):
-            unicornhathd.set_pixel(x, y, 255, 255, 255)
-
-        unicornhathd.set_pixel(x, int(max_levels[x]), 255, 0, 0)
+        for y in range(0, int(level)): turn_on(x, y)
+        turn_on(x, max_levels[x])
 
     unicornhathd.show()
+
+def turn_on(x, y):
+    if y < 0: return None
+    unicornhathd.set_pixel(int(x), int(y), 255, 255, 255)
 
 def main():
     global FREQUENCY_BANDS, SCALED_BARKS
