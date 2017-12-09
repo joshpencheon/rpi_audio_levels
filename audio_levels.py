@@ -150,6 +150,7 @@ def main():
         print "Press <ctrl-c> to stop..."
 
         renderer = Thread(target=render_loop)
+        # TODO: use events, and close down properly
         renderer.daemon = True
         renderer.start()
 
