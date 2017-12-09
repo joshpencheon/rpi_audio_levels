@@ -133,7 +133,7 @@ def render_loop(frame_buffer, stop_event):
 def render(buf):
     frames    = buf.get_frames()
     age_limit = frames.shape[0]
-    linger    = age_limit / 2
+    decay_exp = 4
 
     # Get the extent of all the datapoints in the frames:
     min_bar, max_bar = np.amin(frames), np.amax(frames)
@@ -143,14 +143,17 @@ def render(buf):
 
     # Also, find the greatest bars across the frames.
     # Then weight based on index (older => dimmer, falling).
-    max_bars = np.amax(frames, axis=0)
-    max_ages = np.argmax(frames, axis=0)
+    max_bars   = np.amax(frames, axis=0)
+    max_ages   = np.argmax(frames, axis=0)
+    max_levels = to_level(max_bars, min_bar, max_bar)
 
-    max_weights = np.clip(max_ages - linger, 0, None)
-    max_weights = max_weights * 1.0 / (age_limit - linger)
+    # Linear (to [0, 1]), then exponential, decay:
+    max_weights = np.argmax(frames, axis=0) * 1.0 / age_limit
+    max_weights = (max_weights) ** decay_exp
 
-    max_levels      = to_level(max_bars, min_bar, max_bar) - age_limit * max_weights
-    max_intensities = 1 - max_weights
+    # Decay levels in height and brightness:
+    max_levels      = max_levels - age_limit * max_weights
+    max_intensities = 1 - decay_exp * max_weights
 
     unicornhathd.clear()
 
