@@ -5,6 +5,7 @@ import numpy as np
 import pyaudio
 import struct
 import time
+import unicornhathd
 
 FORMAT       = pyaudio.paInt16
 RATE         = 44100
@@ -54,9 +55,9 @@ def traces(bark_levels):
     return traces
 
 # Scale the bar within the bounds of x:
-def level(bar, x_min, x_max):
+def to_level(bar, x_min, x_max):
     grad = TRACE_HEIGHT / (x_max - x_min)
-    return grad * (bar - x_min)
+    return np.clip(grad * (bar - x_min), 0, TRACE_HEIGHT - 1)
 
 # Globals used to track the state of the buffered audio:
 i      = -1
@@ -80,19 +81,29 @@ def callback(data, frame_count, time_info, flag):
     i = (i + 1) % nFRAMES
     frames[i] = frame
 
+    render()
+
+    return (data, pyaudio.paContinue)
+
+def render():
     # Get a set of bars which represents the greatest across
     # all frames, as well as absolute bounds across all values:
     max_bars = np.amax(frames, axis=0)
     max_bar  = np.amax(frames)
     min_bar  = np.amin(frames)
 
-    if 0 == i:
-        # print frames
-        # print "min: " + str(min_bar) + " max: " + str(max_bar)
-        # print max_bars
-        print level(max_bars, min_bar, max_bar)
+    levels     = to_level(frames[i], min_bar, max_bar)
+    max_levels = to_level(max_bars, min_bar, max_bar)
 
-    return (data, pyaudio.paContinue)
+    unicornhathd.clear()
+
+    for x, level in enumerate(levels):
+        for y in range(0, int(level)):
+            unicornhathd.set_pixel(x, y, 255, 255, 255)
+
+        unicornhathd.set_pixel(x, int(max_levels[x]), 255, 0, 0)
+
+    unicornhathd.show()
 
 def main():
     global FREQUENCY_BANDS, SCALED_BARKS
@@ -115,11 +126,13 @@ def main():
             stream_callback=callback)
 
     while stream.is_active():
-        time.sleep(60)
+        time.sleep(600)
         stream.stop_stream()
 
-        stream.close()
-        p.terminate()
+    stream.close()
+    p.terminate()
+
+    unicornhathd.off()
 
 if __name__ == '__main__':
     main()
