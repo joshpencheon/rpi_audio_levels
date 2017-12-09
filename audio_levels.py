@@ -11,13 +11,13 @@ import unicornhathd
 FORMAT       = pyaudio.paInt16
 RATE         = 44100
 nFFT         = 2**8
-nFRAMES      = 120
+nFRAMES      = 20
 nTRACES      = 16
 TRACE_HEIGHT = 16
 RENDER_FPS   = 60
 
 # Debugging: get some not-too-pretty output:
-np.set_printoptions(precision=0, suppress=True, linewidth=2000)
+np.set_printoptions(precision=3, suppress=True, linewidth=2000)
 
 class FrameBuffer(object):
     """
@@ -131,30 +131,35 @@ def render_loop(frame_buffer, stop_event):
     unicornhathd.off()
 
 def render(buf):
-    frames = buf.get_frames(10)
+    frames  = buf.get_frames()
+    max_age = frames.shape[0]
 
-    # Get a set of bars which represents the greatest across
-    # all frames, as well as absolute bounds across all values:
-    max_bars = np.amax(frames, axis=0)
-    max_bar  = np.amax(frames)
-    min_bar  = np.amin(frames)
+    # Get the extent of all the datapoints in the frames:
+    min_bar, max_bar = np.amin(frames), np.amax(frames)
 
-    levels     = to_level(frames[0], min_bar, max_bar)
-    max_levels = to_level(max_bars, min_bar, max_bar)
+    # Map the most recent frame to a set of levels:
+    levels = to_level(frames[0], min_bar, max_bar)
+
+    # Also, find the greatest bars across the frames.
+    # Then weight based on index (older => dimmer, falling).
+    max_bars        = np.amax(frames, axis=0)
+    max_weights     = np.argmax(frames, axis=0) * 1.0 / max_age
+    max_levels      = to_level(max_bars, min_bar, max_bar) - max_age * max_weights
+    max_intensities = 1 - max_weights
 
     unicornhathd.clear()
 
     for x, level in enumerate(levels):
         for y in range(0, int(level)): turn_on(x, y)
-        turn_on(x, max_levels[x])
+        turn_on(x, max_levels[x], v=max_intensities[x])
 
     unicornhathd.show()
 
-def turn_on(x, y):
+def turn_on(x, y, v=1.00):
     if y < 0: return None
-    unicornhathd.set_pixel_hsv(int(x), int(y), *hsv_for(x, y))
+    unicornhathd.set_pixel_hsv(int(x), int(y), *hsv_for(x, y, v))
 
-def hsv_for(x, y, v=1.00):
+def hsv_for(x, y, v):
     fraction = (y + 1.0) / TRACE_HEIGHT
     if   fraction >= 0.85: return [0.00, 1.00, v]
     elif fraction >= 0.65: return [0.17, 1.00, v]
