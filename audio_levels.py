@@ -118,7 +118,13 @@ def render():
 
 def turn_on(x, y):
     if y < 0: return None
-    unicornhathd.set_pixel(int(x), int(y), 255, 255, 255)
+    unicornhathd.set_pixel(int(x), int(y), *colour_for(x, y))
+
+def colour_for(x, y):
+    fraction = (y + 1.0) / TRACE_HEIGHT
+    if   fraction >= 0.85: return [255,   0,   0]
+    elif fraction >= 0.65: return [255, 255,   0]
+    else:                  return [0  , 255,   0]
 
 def main():
     global FREQUENCY_BANDS, SCALED_BARKS
