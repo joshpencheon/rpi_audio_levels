@@ -4,20 +4,56 @@ import math
 import numpy as np
 import pyaudio
 import struct
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 import time
 import unicornhathd
 
 FORMAT       = pyaudio.paInt16
 RATE         = 44100
 nFFT         = 2**8
-nFRAMES      = 5
+nFRAMES      = 120
 nTRACES      = 16
 TRACE_HEIGHT = 16
 RENDER_FPS   = 60
 
 # Debugging: get some not-too-pretty output:
 np.set_printoptions(precision=0, suppress=True, linewidth=2000)
+
+class FrameBuffer(object):
+    """
+    Buffers a number of frames in a fixed-size two-dimensional
+    array data structure. Provides synchronised access to buffer
+    history, in reverse chronogical order.
+    """
+    def __init__(self, length, frame_size):
+        self.length = length
+        self.frames = np.zeros(shape=(self.length, frame_size))
+        self.index  = 0
+        self.lock   = Lock()
+
+    def push_frame(self, frame):
+        with self.lock:
+            self.index = (self.index - 1) % self.length
+            self.frames[self.index] = frame
+
+    def get_current_frame(self):
+        return self.get_frames(1)
+
+    def get_frames(self, limit=None):
+        if limit is None: limit = self.length
+
+        with self.lock:
+            limit = min(limit, self.length)
+            start = self.index
+            stop  = start + limit
+
+            slice = self.frames[start:stop]
+
+            if stop > self.length:
+                rest  = self.frames[0:(stop % self.length)]
+                slice = np.concatenate((slice, rest))
+
+            return slice
 
 # For the given frequency, return the position on the Bark scale:
 def raw_bark(f):
@@ -42,7 +78,7 @@ def traces(bark_levels):
     # with the increased sensitivity represented by the Bark scale.
     spread_to = nTRACES - 1
     for index in range(spread_to, -1, -1):
-        # We're going to want to try and spread over this index: 
+        # We're going to want to try and spread over this index:
         if 0 == traces[index]: continue
 
         if spread_to != index:
@@ -64,14 +100,8 @@ def to_level(bar, x_min, x_max):
     grad = TRACE_HEIGHT / (x_max - x_min)
     return np.clip(grad * (bar - x_min), 0, TRACE_HEIGHT) - 1
 
-# Globals used to track the state of the buffered audio:
-i      = -1
-frames = np.zeros(shape=(nFRAMES, nTRACES))
-
 # PyAudio callback, used to process data buffered from the microphone:
 def callback(data, frame_count, time_info, flag):
-    global i, frames
-
     # Unpack expected number of floats, and then run through FFTs.
     # Due to symmetry, we can discared half of the results.
     signal = np.array(struct.unpack("%dh" % frame_count, data))
@@ -82,34 +112,34 @@ def callback(data, frame_count, time_info, flag):
     bark_levels = np.array([SCALED_BARKS, ffts]).T
     frame       = traces(bark_levels)
 
-    # Store the frame in our circular history:
-    i = (i + 1) % nFRAMES
-    frames[i] = frame
+    frame_buffer.push_frame(frame)
 
     return (data, pyaudio.paContinue)
 
-def render_loop(stop_event):
+def render_loop(frame_buffer, stop_event):
     target = 1.0 / RENDER_FPS
 
     unicornhathd.rotation(-90)
 
     while not stop_event.is_set():
         started = time.time()
-        render()
+        render(frame_buffer)
         elapsed   = time.time() - started
         remaining = max(0, target - elapsed)
         time.sleep(remaining)
 
     unicornhathd.off()
 
-def render():
+def render(buf):
+    frames = buf.get_frames(10)
+
     # Get a set of bars which represents the greatest across
     # all frames, as well as absolute bounds across all values:
     max_bars = np.amax(frames, axis=0)
     max_bar  = np.amax(frames)
     min_bar  = np.amin(frames)
 
-    levels     = to_level(frames[i], min_bar, max_bar)
+    levels     = to_level(frames[0], min_bar, max_bar)
     max_levels = to_level(max_bars, min_bar, max_bar)
 
     unicornhathd.clear()
@@ -131,7 +161,7 @@ def hsv_for(x, y, v=1.00):
     else:                  return [0.27, 1.00, v]
 
 def main():
-    global FREQUENCY_BANDS, SCALED_BARKS
+    global FREQUENCY_BANDS, SCALED_BARKS, frame_buffer
 
     # FFTs will provide output in equally-wide bands spanning from
     # zero to half of the sample rate. The number of bands is half
@@ -141,6 +171,8 @@ def main():
     # perceivable range of frequencies.
     FREQUENCY_BANDS = np.array(1.0 * np.arange(0, nFFT / 2) / nFFT * RATE)
     SCALED_BARKS    = np.array([scaled_bark(x) for x in FREQUENCY_BANDS])
+
+    frame_buffer = FrameBuffer(nFRAMES, nTRACES)
 
     p = pyaudio.PyAudio()
 
@@ -154,7 +186,10 @@ def main():
         print "Press <ctrl-c> to stop..."
 
         stop_rendering = Event()
-        Thread(target=render_loop, args=(stop_rendering,)).start()
+        Thread(
+            target=render_loop,
+            args=(frame_buffer,stop_rendering,)
+        ).start()
 
         while True:
             try:
