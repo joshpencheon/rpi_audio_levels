@@ -4,7 +4,7 @@ import math
 import numpy as np
 import pyaudio
 import struct
-from threading import Thread
+from threading import Event, Thread
 import time
 import unicornhathd
 
@@ -88,15 +88,17 @@ def callback(data, frame_count, time_info, flag):
 
     return (data, pyaudio.paContinue)
 
-def render_loop():
+def render_loop(stop_event):
     target = 1.0 / RENDER_FPS
 
-    while True:
+    while not stop_event.is_set():
         started = time.time()
         render()
         elapsed   = time.time() - started
         remaining = max(0, target - elapsed)
         time.sleep(remaining)
+
+    unicornhathd.off()
 
 def render():
     # Get a set of bars which represents the greatest across
@@ -149,22 +151,19 @@ def main():
     while stream.is_active():
         print "Press <ctrl-c> to stop..."
 
-        renderer = Thread(target=render_loop)
-        # TODO: use events, and close down properly
-        renderer.daemon = True
-        renderer.start()
+        stop_rendering = Event()
+        Thread(target=render_loop, args=(stop_rendering,)).start()
 
         while True:
             try:
                 time.sleep(.5)
             except KeyboardInterrupt:
                 stream.stop_stream()
+                stop_rendering.set()
                 break
 
     stream.close()
     p.terminate()
-
-    unicornhathd.off()
 
 if __name__ == '__main__':
     main()
