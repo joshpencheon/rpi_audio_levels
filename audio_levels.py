@@ -150,8 +150,9 @@ def render(buf):
     unicornhathd.clear()
 
     for x, level in enumerate(levels):
-        for y in range(0, int(level)): turn_on(x, y)
         turn_on(x, max_levels[x], v=max_intensities[x])
+        # Draw current levels over the top of any decaying max levels...
+        for y in range(0, int(level)): turn_on(x, y)
 
     unicornhathd.show()
 
