@@ -91,6 +91,8 @@ def callback(data, frame_count, time_info, flag):
 def render_loop(stop_event):
     target = 1.0 / RENDER_FPS
 
+    unicornhathd.rotation(-90)
+
     while not stop_event.is_set():
         started = time.time()
         render()
