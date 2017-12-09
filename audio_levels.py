@@ -126,8 +126,13 @@ def main():
             stream_callback=callback)
 
     while stream.is_active():
-        time.sleep(600)
-        stream.stop_stream()
+        print "Press <ctrl-c> to stop..."
+        while True:
+            try:
+                time.sleep(.5)
+            except KeyboardInterrupt:
+                stream.stop_stream()
+                break
 
     stream.close()
     p.terminate()
