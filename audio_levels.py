@@ -25,11 +25,17 @@ class FrameBuffer(object):
     array data structure. Provides synchronised access to buffer
     history, in reverse chronogical order.
     """
-    def __init__(self, length, frame_size):
+    def __init__(self, length, width):
         self.length = length
-        self.frames = np.zeros(shape=(self.length, frame_size))
+        self.width  = width
         self.index  = 0
         self.lock   = Lock()
+
+        self.wipe()
+
+    def wipe(self):
+        with self.lock:
+            self.frames = np.zeros(shape=(self.length, self.width))
 
     def push_frame(self, frame):
         with self.lock:
@@ -94,8 +100,8 @@ def traces(bark_levels):
 
 # Scale the bar within the bounds of x:
 def to_level(bar, x_min, x_max):
-    # There is no extent defined; return zeros:
-    if x_min == x_max: return np.zeros_like(bar)
+    # There is no extent defined; return an "off" row:
+    if x_min == x_max: return np.zeros_like(bar) - 1
 
     grad = TRACE_HEIGHT / (x_max - x_min)
     return np.clip(grad * (bar - x_min), 0, TRACE_HEIGHT) - 1
@@ -116,21 +122,42 @@ def callback(data, frame_count, time_info, flag):
 
     return (data, pyaudio.paContinue)
 
-def render_loop(frame_buffer, stop_event):
-    target = 1.0 / RENDER_FPS
-
+def render_loop(frame_buffer, start_event, stop_event):
     unicornhathd.rotation(-90)
 
-    while not stop_event.is_set():
-        started = time.time()
-        render(frame_buffer)
-        elapsed   = time.time() - started
-        remaining = max(0, target - elapsed)
-        time.sleep(remaining)
+    render_warmup(frame_buffer)
+    start_event.set()
+    while not stop_event.is_set(): render_frame(frame_buffer)
+    render_warmdown(frame_buffer)
 
     unicornhathd.off()
 
-def render(buf):
+def render_warmup(buf):
+    step = 2 * np.pi / buf.length
+    for i in range(0, buf.length) + range(buf.length, 0, -1):
+        offset = step * i
+        x = np.linspace(offset - np.pi, offset, buf.width)
+        buf.push_frame(np.clip(np.sin(x), 0, None))
+        render_frame(buf, render_max=False)
+    buf.wipe()
+
+def render_warmdown(buf):
+    for i in range(0, buf.length):
+        buf.push_frame(np.zeros(buf.width))
+        render_frame(buf)
+
+def render_frame(*args, **kwargs):
+    target  = 1.0 / RENDER_FPS
+    started = time.time()
+
+    __render(*args, **kwargs)
+
+    elapsed   = time.time() - started
+    remaining = max(0, target - elapsed)
+    time.sleep(remaining)
+
+
+def __render(buf, render_max=True):
     frames    = buf.get_frames()
     age_limit = frames.shape[0]
     decay_exp = 4
@@ -158,7 +185,7 @@ def render(buf):
     unicornhathd.clear()
 
     for x, level in enumerate(levels):
-        turn_on(x, max_levels[x], v=max_intensities[x])
+        if render_max: turn_on(x, max_levels[x], v=max_intensities[x])
         # Draw current levels over the top of any decaying max levels...
         for y in range(0, int(level)): turn_on(x, y)
 
@@ -188,6 +215,15 @@ def main():
 
     frame_buffer = FrameBuffer(nFRAMES, nTRACES)
 
+    start_rendering = Event()
+    stop_rendering  = Event()
+    Thread(
+        target=render_loop,
+        args=(frame_buffer,start_rendering,stop_rendering,)
+    ).start()
+
+    while not start_rendering.is_set(): time.sleep(0.1)
+
     p = pyaudio.PyAudio()
 
     stream = p.open(format=FORMAT,
@@ -198,12 +234,6 @@ def main():
 
     while stream.is_active():
         print "Press <ctrl-c> to stop..."
-
-        stop_rendering = Event()
-        Thread(
-            target=render_loop,
-            args=(frame_buffer,stop_rendering,)
-        ).start()
 
         while True:
             try:
