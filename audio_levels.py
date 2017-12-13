@@ -104,11 +104,8 @@ def to_level(bar, x_min, x_med, x_max):
     if x_min == x_max: return np.zeros_like(bar) - 1
 
     def grad(x):
-        pivot = 0.5 * TRACE_HEIGHT
-        if x < x_med:
-            return pivot * (x - x_min) / (x_med - x_min)
-        else:
-            return pivot * (x - x_med) / (x_max - x_med) + pivot
+        return TRACE_HEIGHT * ( np.log(x     + 1) - np.log(x_min + 1) ) \
+                            / ( np.log(x_max + 1) - np.log(x_min + 1) )
 
     return np.clip(np.vectorize(grad)(bar), 0, TRACE_HEIGHT) - 1
 
