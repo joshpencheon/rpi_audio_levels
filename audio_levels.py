@@ -99,15 +99,18 @@ def traces(bark_levels):
     return traces
 
 # Scale the bar within the bounds of x:
-def to_level(bar, x_min, x_max):
+def to_level(bar, x_min, x_med, x_max):
     # There is no extent defined; return an "off" row:
     if x_min == x_max: return np.zeros_like(bar) - 1
 
-    scale = np.vectorize(
-                lambda x: TRACE_HEIGHT * (x - x_min) / (x_max - x_min)
-            )
+    def grad(x):
+        pivot = 0.5 * TRACE_HEIGHT
+        if x < x_med:
+            return pivot * (x - x_min) / (x_med - x_min)
+        else:
+            return pivot * (x - x_med) / (x_max - x_med) + pivot
 
-    return np.clip(scale(bar), 0, TRACE_HEIGHT) - 1
+    return np.clip(np.vectorize(grad)(bar), 0, TRACE_HEIGHT) - 1
 
 # PyAudio callback, used to process data buffered from the microphone:
 def callback(data, frame_count, time_info, flag):
@@ -159,23 +162,22 @@ def render_frame(*args, **kwargs):
     remaining = max(0, target - elapsed)
     time.sleep(remaining)
 
-
 def __render(buf, render_max=True):
     frames    = buf.get_frames()
     age_limit = frames.shape[0]
     decay_exp = 4
 
     # Get the extent of all the datapoints in the frames:
-    min_bar, max_bar = np.amin(frames), np.amax(frames)
+    min_bar, med_bar, max_bar = np.amin(frames), np.median(frames), np.amax(frames)
 
     # Map the most recent frame to a set of levels:
-    levels = to_level(frames[0], min_bar, max_bar)
+    levels = to_level(frames[0], min_bar, med_bar, max_bar)
 
     # Also, find the greatest bars across the frames.
     # Then weight based on index (older => dimmer, falling).
     max_bars   = np.amax(frames, axis=0)
     max_ages   = np.argmax(frames, axis=0)
-    max_levels = to_level(max_bars, min_bar, max_bar)
+    max_levels = to_level(max_bars, min_bar, med_bar, max_bar)
 
     # Linear (to [0, 1]), then exponential, decay:
     max_weights = np.argmax(frames, axis=0) * 1.0 / age_limit
