@@ -103,8 +103,11 @@ def to_level(bar, x_min, x_max):
     # There is no extent defined; return an "off" row:
     if x_min == x_max: return np.zeros_like(bar) - 1
 
-    grad = TRACE_HEIGHT / (x_max - x_min)
-    return np.clip(grad * (bar - x_min), 0, TRACE_HEIGHT) - 1
+    scale = np.vectorize(
+                lambda x: TRACE_HEIGHT * (x - x_min) / (x_max - x_min)
+            )
+
+    return np.clip(scale(bar), 0, TRACE_HEIGHT) - 1
 
 # PyAudio callback, used to process data buffered from the microphone:
 def callback(data, frame_count, time_info, flag):
