@@ -15,6 +15,7 @@ nFRAMES      = 20
 nTRACES      = 16
 TRACE_HEIGHT = 16
 RENDER_FPS   = 60
+DECAY_FRAMES = 5
 
 # Debugging: get some not-too-pretty output:
 np.set_printoptions(precision=3, suppress=True, linewidth=2000)
@@ -172,7 +173,8 @@ def __render(buf, render_max=True):
     max_bar  = np.amax(frames)
 
     # Map the most recent frame to a set of levels:
-    levels = to_level(frames[0], min_bars, max_bar)
+    frame  = np.maximum(frames[0], np.mean(frames[0:DECAY_FRAMES], axis=0))
+    levels = to_level(frame, min_bars, max_bar)
 
     # Also, find the greatest bars across the frames.
     # Then weight based on index (older => dimmer, falling).
