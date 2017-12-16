@@ -104,8 +104,11 @@ def to_level(bar, x_mins, x_max):
     # There is no extent defined; return an "off" row:
     off = np.zeros_like(bar) - 1
 
-    a = np.log(bar   + 1) - np.log(x_mins + 1)
-    b = np.log(x_max + 1) - np.log(x_mins + 1)
+    func = np.log       # Logarithmic scaling
+    # func = np.array   # Linear scaling
+
+    a = func(bar   + 1) - func(x_mins + 1)
+    b = func(x_max + 1) - func(x_mins + 1)
 
     # Divide, unless the extent was zero-width:
     level = np.divide(TRACE_HEIGHT * a, b, out=off, where=b!=0)
