@@ -99,12 +99,12 @@ def traces(bark_levels):
     return traces
 
 # Scale the bar within the bounds of x:
-def to_level(bar, x_min, x_med, x_max):
+def to_level(bar, x_mins, x_max):
     # There is no extent defined; return an "off" row:
     off = np.zeros_like(bar) - 1
 
-    a = np.log(bar   + 1) - np.log(x_min + 1)
-    b = np.log(x_max + 1) - np.log(x_min + 1)
+    a = np.log(bar   + 1) - np.log(x_mins + 1)
+    b = np.log(x_max + 1) - np.log(x_mins + 1)
 
     # Divide, unless the extent was zero-width:
     level = np.divide(TRACE_HEIGHT * a, b, out=off, where=b!=0)
@@ -166,19 +166,19 @@ def __render(buf, render_max=True):
     age_limit = frames.shape[0]
     decay_exp = 4
 
-    # Get the extent of all the datapoints in the frames:
-    min_bar = np.amin(frames,   axis=0)
-    med_bar = np.median(frames, axis=0)
-    max_bar = np.amax(frames,   axis=0)
+    # Get per-level minimums, and a global maximum (for best
+    # sensitivity / comparability compromise).
+    min_bars = np.amin(frames, axis=0)
+    max_bar  = np.amax(frames)
 
     # Map the most recent frame to a set of levels:
-    levels = to_level(frames[0], min_bar, med_bar, max_bar)
+    levels = to_level(frames[0], min_bars, max_bar)
 
     # Also, find the greatest bars across the frames.
     # Then weight based on index (older => dimmer, falling).
     max_bars   = np.amax(frames, axis=0)
     max_ages   = np.argmax(frames, axis=0)
-    max_levels = to_level(max_bars, min_bar, med_bar, max_bar)
+    max_levels = to_level(max_bars, min_bars, max_bar)
 
     # Linear (to [0, 1]), then exponential, decay:
     max_weights = np.argmax(frames, axis=0) * 1.0 / age_limit
