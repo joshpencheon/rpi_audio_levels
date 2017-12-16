@@ -37,11 +37,20 @@ class FrameBuffer(object):
     def wipe(self):
         with self.lock:
             self.frames = np.zeros(shape=(self.length, self.width))
+            self.floor  = np.zeros(shape=(self.width,))
+            self.ceil   = np.zeros(shape=(self.width,))
 
     def push_frame(self, frame):
         with self.lock:
             self.index = (self.index - 1) % self.length
             self.frames[self.index] = frame
+
+            # Aim to maintain a non-zero all-time floor for each level:
+            abs_floor  = np.minimum(self.floor, frame)
+            self.floor = np.where(abs_floor > 0, abs_floor, frame)
+
+            # Keep an all-time ceiling for eac level too:
+            self.ceil = np.maximum(self.ceil, frame)
 
     def get_current_frame(self):
         return self.get_frames(1)
@@ -172,8 +181,8 @@ def __render(buf, render_max=True):
 
     # Get per-level minimums, and a global maximum (for best
     # sensitivity / comparability compromise).
-    min_bars = np.amin(frames, axis=0)
-    max_bar  = np.amax(frames)
+    min_bars = buf.floor
+    max_bar  = np.amax(buf.ceil)
 
     # Map the most recent frame to a set of levels:
     frame  = np.maximum(frames[0], np.mean(frames[0:DECAY_FRAMES], axis=0))
