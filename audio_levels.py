@@ -101,13 +101,15 @@ def traces(bark_levels):
 # Scale the bar within the bounds of x:
 def to_level(bar, x_min, x_med, x_max):
     # There is no extent defined; return an "off" row:
-    if x_min == x_max: return np.zeros_like(bar) - 1
+    off = np.zeros_like(bar) - 1
 
-    def grad(x):
-        return TRACE_HEIGHT * ( np.log(x     + 1) - np.log(x_min + 1) ) \
-                            / ( np.log(x_max + 1) - np.log(x_min + 1) )
+    a = np.log(bar   + 1) - np.log(x_min + 1)
+    b = np.log(x_max + 1) - np.log(x_min + 1)
 
-    return np.clip(np.vectorize(grad)(bar), 0, TRACE_HEIGHT) - 1
+    # Divide, unless the extent was zero-width:
+    level = np.divide(TRACE_HEIGHT * a, b, out=off, where=b!=0)
+
+    return np.clip(level, 0, TRACE_HEIGHT) - 1
 
 # PyAudio callback, used to process data buffered from the microphone:
 def callback(data, frame_count, time_info, flag):
@@ -165,7 +167,9 @@ def __render(buf, render_max=True):
     decay_exp = 4
 
     # Get the extent of all the datapoints in the frames:
-    min_bar, med_bar, max_bar = np.amin(frames), np.median(frames), np.amax(frames)
+    min_bar = np.amin(frames,   axis=0)
+    med_bar = np.median(frames, axis=0)
+    max_bar = np.amax(frames,   axis=0)
 
     # Map the most recent frame to a set of levels:
     levels = to_level(frames[0], min_bar, med_bar, max_bar)
