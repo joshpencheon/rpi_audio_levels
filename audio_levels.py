@@ -150,7 +150,7 @@ def render_loop(frame_buffer, start_event, stop_event):
     time.sleep(1)
     frame_buffer.wipe()
 
-    while not stop_event.is_set(): render_frame(frame_buffer)
+    while not stop_event.is_set(): tick_once(__render, frame_buffer)
     render_warmdown(frame_buffer)
 
     unicornhathd.off()
@@ -161,19 +161,19 @@ def render_warmup(buf):
         offset = step * i
         x = np.linspace(offset - np.pi, offset, buf.width)
         buf.push_frame(np.clip(np.sin(x), 0, None))
-        render_frame(buf, render_max=False)
+        tick_once(__render, buf, render_max=False)
     buf.wipe()
 
 def render_warmdown(buf):
     for i in range(0, buf.length):
         buf.push_frame(np.zeros(buf.width))
-        render_frame(buf)
+        tick_once(__render, buf)
 
-def render_frame(*args, **kwargs):
+def tick_once(func, *args, **kwargs):
     target  = 1.0 / RENDER_FPS
     started = time.time()
 
-    __render(*args, **kwargs)
+    func(*args, **kwargs)
 
     elapsed   = time.time() - started
     remaining = max(0, target - elapsed)
