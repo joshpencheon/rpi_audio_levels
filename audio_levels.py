@@ -145,6 +145,11 @@ def render_loop(frame_buffer, start_event, stop_event):
 
     render_warmup(frame_buffer)
     start_event.set()
+
+    # Capture a second of audio then through it away, dodgy mic...
+    time.sleep(1)
+    frame_buffer.wipe()
+
     while not stop_event.is_set(): render_frame(frame_buffer)
     render_warmdown(frame_buffer)
 
