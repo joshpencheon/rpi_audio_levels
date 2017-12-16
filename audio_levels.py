@@ -143,43 +143,42 @@ def callback(data, frame_count, time_info, flag):
 def render_loop(frame_buffer, start_event, stop_event):
     unicornhathd.rotation(-90)
 
-    render_warmup(frame_buffer)
-    start_event.set()
+    render_warmup(start_event)
 
-    # Capture a second of audio then through it away, dodgy mic...
-    time.sleep(1)
-    frame_buffer.wipe()
-
-    while not stop_event.is_set(): tick_once(__render, frame_buffer)
+    while not stop_event.is_set(): tick_once(__render, args=frame_buffer)
     render_warmdown(frame_buffer)
 
     unicornhathd.off()
 
-def render_warmup(buf):
-    step = 2 * np.pi / buf.length
-    for i in range(0, buf.length) + range(buf.length, 0, -1):
-        offset = step * i
-        x = np.linspace(offset - np.pi, offset, buf.width)
-        buf.push_frame(np.clip(np.sin(x), 0, None))
-        tick_once(__render, buf, render_max=False)
-    buf.wipe()
+# Render some progress dots until the mic is warmed up:
+def render_warmup(start_event):
+    def blink(lights):
+        unicornhathd.clear()
+        for i, v in enumerate(lights):
+            unicornhathd.set_pixel_hsv(3 + 2 * (i % 5), 6, 1, 0, v)
+        unicornhathd.show()
+
+    lights = np.linspace(1, 0, num=5, endpoint=False)
+    while not start_event.is_set():
+        lights = np.roll(lights, 1)
+        tick_once(blink, args=lights, fps=10)
 
 def render_warmdown(buf):
     for i in range(0, buf.length):
         buf.push_frame(np.zeros(buf.width))
-        tick_once(__render, buf)
+        tick_once(__render, args=buf)
 
-def tick_once(func, *args, **kwargs):
-    target  = 1.0 / RENDER_FPS
+def tick_once(func, fps=RENDER_FPS, args=()):
+    target  = 1.0 / fps
     started = time.time()
 
-    func(*args, **kwargs)
+    func(args)
 
     elapsed   = time.time() - started
     remaining = max(0, target - elapsed)
     time.sleep(remaining)
 
-def __render(buf, render_max=True):
+def __render(buf):
     frames    = buf.get_frames()
     age_limit = frames.shape[0]
     decay_exp = 4
@@ -210,7 +209,7 @@ def __render(buf, render_max=True):
     unicornhathd.clear()
 
     for x, level in enumerate(levels):
-        if render_max: turn_on(x, max_levels[x], v=max_intensities[x])
+        turn_on(x, max_levels[x], v=max_intensities[x])
         # Draw current levels over the top of any decaying max levels...
         for y in range(0, int(level)): turn_on(x, y)
 
@@ -247,8 +246,6 @@ def main():
         args=(frame_buffer,start_rendering,stop_rendering,)
     ).start()
 
-    while not start_rendering.is_set(): time.sleep(0.1)
-
     p = pyaudio.PyAudio()
 
     stream = p.open(format=FORMAT,
@@ -260,13 +257,19 @@ def main():
     while stream.is_active():
         print "Press <ctrl-c> to stop..."
 
-        while True:
-            try:
-                time.sleep(.5)
-            except KeyboardInterrupt:
-                stream.stop_stream()
-                stop_rendering.set()
-                break
+
+        try:
+            # Let the microphone warm up before paying attention:
+            time.sleep(1)
+            frame_buffer.wipe()
+            start_rendering.set()
+
+            while True: time.sleep(.5)
+        except KeyboardInterrupt:
+            stream.stop_stream()
+            start_rendering.set()
+            stop_rendering.set()
+            break
 
     stream.close()
     p.terminate()
