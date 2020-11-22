@@ -129,7 +129,7 @@ def callback(data, frame_count, time_info, flag):
     # Unpack expected number of floats, and then run through FFTs.
     # Due to symmetry, we can discared half of the results.
     signal = np.array(struct.unpack("%dh" % frame_count, data))
-    ffts   = abs(np.fft.fft(signal, nFFT)[:nFFT/2])
+    ffts   = abs(np.fft.fft(signal, nFFT)[:int(nFFT/2)])
 
     # Match FFTs with the static Bark values, and distribute
     # across the available space to get a complete frame:
@@ -255,7 +255,7 @@ def main():
             stream_callback=callback)
 
     while stream.is_active():
-        print "Press <ctrl-c> to stop..."
+        print("Press <ctrl-c> to stop...")
 
 
         try:
