@@ -6,4 +6,4 @@ RUN pip install -r requirements.txt
 
 ADD audio_levels.py .
 
-CMD ./audio_levels.py
+ENTRYPOINT ["python", "audio_levels.py"]
